@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const model = new THREE.Group();
     let skeletonHelper;
     let baseModelHeight = 1.81;
+    const groundingVertex = new THREE.Vector3();
+    const groundingBox = new THREE.Box3();
     scene.add(model);
 
     const loadingStatus = document.createElement('div');
@@ -78,15 +80,36 @@ document.addEventListener('DOMContentLoaded', () => {
     canvasContainer.appendChild(loadingStatus);
 
     function alignModelToGround() {
-        const box = new THREE.Box3().setFromObject(model);
-        if (box.isEmpty()) {
+        let lowestPoint = Infinity;
+        model.updateMatrixWorld(true);
+
+        model.traverse((child) => {
+            if (!child.isMesh || child.userData.ignoreGrounding) {
+                return;
+            }
+
+            if (child.isSkinnedMesh) {
+                const positionAttribute = child.geometry.attributes.position;
+                child.skeleton.update();
+                for (let index = 0; index < positionAttribute.count; index += 1) {
+                    groundingVertex.fromBufferAttribute(positionAttribute, index);
+                    child.boneTransform(index, groundingVertex);
+                    child.localToWorld(groundingVertex);
+                    lowestPoint = Math.min(lowestPoint, groundingVertex.y);
+                }
+                return;
+            }
+
+            groundingBox.setFromObject(child);
+            lowestPoint = Math.min(lowestPoint, groundingBox.min.y);
+        });
+
+        if (!Number.isFinite(lowestPoint)) {
             return;
         }
 
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.x -= center.x;
-        model.position.y -= box.min.y;
-        model.position.z -= center.z;
+        model.position.y -= lowestPoint;
+        model.updateMatrixWorld(true);
         groundPlane.position.y = 0;
     }
 
@@ -116,7 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderer,
                 orbitControls: controls,
                 model: loadedModel,
-                container: controlsContainer
+                container: controlsContainer,
+                onPoseChange: alignModelToGround
             });
             loadingStatus.remove();
         },

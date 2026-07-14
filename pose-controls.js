@@ -47,14 +47,98 @@
         return /^(thumb|index|middle|ring|pinky)_0[1-3]_[lr]$/.test(name);
     }
 
+    function createFistRotations() {
+        const rotations = {};
+        ['l', 'r'].forEach((side) => {
+            ['index', 'middle', 'ring', 'pinky'].forEach((finger) => {
+                rotations[`${finger}_01_${side}`] = [70, 0, 0];
+                rotations[`${finger}_02_${side}`] = [95, 0, 0];
+                rotations[`${finger}_03_${side}`] = [75, 0, 0];
+            });
+            rotations[`thumb_01_${side}`] = [20, 0, side === 'l' ? -20 : 20];
+            rotations[`thumb_02_${side}`] = [55, 0, 0];
+            rotations[`thumb_03_${side}`] = [35, 0, 0];
+        });
+        return rotations;
+    }
+
+    const STANDING_ROTATIONS = {
+        upperarm_l: [0, 0, -78],
+        lowerarm_l: [5, 0, 0],
+        upperarm_r: [0, 0, 78],
+        lowerarm_r: [5, 0, 0]
+    };
+
+    const POSE_PRESETS = {
+        standing: {
+            label: 'Standing',
+            scope: 'all',
+            rotations: STANDING_ROTATIONS
+        },
+        contrapposto: {
+            label: 'Contrapposto',
+            scope: 'all',
+            rotations: {
+                ...STANDING_ROTATIONS,
+                pelvis: [0, 0, 6],
+                spine_01: [0, 0, -4],
+                spine_02: [0, 0, -2],
+                thigh_r: [-8, 0, 2],
+                calf_r: [18, 0, 0]
+            }
+        },
+        sitting: {
+            label: 'Sitting',
+            scope: 'all',
+            rotations: {
+                upperarm_l: [10, 0, -62],
+                lowerarm_l: [40, 0, 0],
+                upperarm_r: [10, 0, 62],
+                lowerarm_r: [40, 0, 0],
+                thigh_l: [-85, 0, -4],
+                calf_l: [85, 0, 0],
+                thigh_r: [-85, 0, 4],
+                calf_r: [85, 0, 0],
+                spine_01: [6, 0, 0]
+            }
+        },
+        crouching: {
+            label: 'Crouching',
+            scope: 'all',
+            rotations: {
+                pelvis: [5, 0, 0],
+                spine_01: [15, 0, 0],
+                upperarm_l: [25, 0, -55],
+                lowerarm_l: [45, 0, 0],
+                upperarm_r: [25, 0, 55],
+                lowerarm_r: [45, 0, 0],
+                thigh_l: [-55, 0, -6],
+                calf_l: [105, 0, 0],
+                thigh_r: [-55, 0, 6],
+                calf_r: [105, 0, 0]
+            }
+        },
+        fist: {
+            label: 'Fists',
+            scope: 'hands',
+            rotations: createFistRotations()
+        },
+        openHands: {
+            label: 'Open Hands',
+            scope: 'hands',
+            rotations: {}
+        }
+    };
+
     class PoseController {
-        constructor({ scene, camera, renderer, orbitControls, model, container }) {
+        constructor({ scene, camera, renderer, orbitControls, model, container, onPoseChange }) {
             this.scene = scene;
             this.camera = camera;
             this.renderer = renderer;
             this.orbitControls = orbitControls;
             this.model = model;
             this.container = container;
+            this.onPoseChange = onPoseChange || (() => {});
             this.bones = new Map();
             this.bindQuaternions = new Map();
             this.selectedBone = null;
@@ -63,6 +147,8 @@
             this.deltaEuler = new THREE.Euler(0, 0, 0, 'XYZ');
             this.deltaQuaternion = new THREE.Quaternion();
             this.inverseBindQuaternion = new THREE.Quaternion();
+            this.presetEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+            this.presetQuaternion = new THREE.Quaternion();
             this.poseHistory = [];
             this.historyIndex = -1;
             this.isRestoringPose = false;
@@ -95,6 +181,22 @@
             const heading = document.createElement('h3');
             heading.textContent = 'Pose Model';
             this.panel.appendChild(heading);
+
+            const presetLabel = document.createElement('span');
+            presetLabel.className = 'pose-subheading';
+            presetLabel.textContent = 'Pose Presets';
+            this.panel.appendChild(presetLabel);
+
+            const presetGrid = document.createElement('div');
+            presetGrid.className = 'pose-preset-grid';
+            Object.entries(POSE_PRESETS).forEach(([name, preset]) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = preset.label;
+                button.addEventListener('click', () => this.applyPreset(name));
+                presetGrid.appendChild(button);
+            });
+            this.panel.appendChild(presetGrid);
 
             const selectLabel = document.createElement('label');
             selectLabel.htmlFor = 'poseBoneSelect';
@@ -262,6 +364,7 @@
             });
             this.transformControls.addEventListener('objectChange', () => {
                 this.syncSlidersFromBone();
+                this.onPoseChange();
             });
             this.scene.add(this.transformControls);
         }
@@ -273,6 +376,7 @@
                 depthTest: false
             });
             this.jointMarker = new THREE.Mesh(geometry, material);
+            this.jointMarker.userData.ignoreGrounding = true;
             this.jointMarker.renderOrder = 1000;
         }
 
@@ -379,6 +483,56 @@
                 .copy(this.bindQuaternions.get(this.selectedBone.name))
                 .multiply(this.deltaQuaternion);
             this.updateValueLabels();
+            this.onPoseChange();
+        }
+
+        setBoneDelta(name, rotationDegrees) {
+            const bone = this.bones.get(name);
+            const bindQuaternion = this.bindQuaternions.get(name);
+            if (!bone || !bindQuaternion) {
+                return;
+            }
+
+            this.presetEuler.set(
+                THREE.MathUtils.degToRad(rotationDegrees[0]),
+                THREE.MathUtils.degToRad(rotationDegrees[1]),
+                THREE.MathUtils.degToRad(rotationDegrees[2]),
+                'XYZ'
+            );
+            this.presetQuaternion.setFromEuler(this.presetEuler);
+            bone.quaternion
+                .copy(bindQuaternion)
+                .multiply(this.presetQuaternion)
+                .normalize();
+        }
+
+        applyPreset(name) {
+            const preset = POSE_PRESETS[name];
+            if (!preset) {
+                return;
+            }
+
+            if (preset.scope === 'all') {
+                this.bones.forEach((bone, boneName) => {
+                    bone.quaternion.copy(this.bindQuaternions.get(boneName));
+                });
+            } else if (preset.scope === 'hands') {
+                FINGER_BONES.forEach((boneName) => {
+                    const bone = this.bones.get(boneName);
+                    if (bone) {
+                        bone.quaternion.copy(this.bindQuaternions.get(boneName));
+                    }
+                });
+            }
+
+            Object.entries(preset.rotations).forEach(([boneName, rotation]) => {
+                this.setBoneDelta(boneName, rotation);
+            });
+
+            this.syncSlidersFromBone();
+            this.onPoseChange();
+            this.recordHistory();
+            this.setStatus(`Applied ${preset.label.toLowerCase()} preset.`);
         }
 
         syncSlidersFromBone() {
@@ -432,6 +586,7 @@
             });
             this.isRestoringPose = false;
             this.syncSlidersFromBone();
+            this.onPoseChange();
         }
 
         recordHistory() {
@@ -560,6 +715,7 @@
             });
 
             this.syncSlidersFromBone();
+            this.onPoseChange();
             this.recordHistory();
             const sourceLabel = sourceSide === 'l' ? 'left' : 'right';
             const targetLabel = targetSide === 'l' ? 'left' : 'right';
@@ -578,6 +734,7 @@
 
             this.selectedBone.quaternion.copy(this.bindQuaternions.get(this.selectedBone.name));
             this.syncSlidersFromBone();
+            this.onPoseChange();
             this.recordHistory();
             this.setStatus('Joint reset.');
         }
@@ -587,6 +744,7 @@
                 bone.quaternion.copy(this.bindQuaternions.get(name));
             });
             this.syncSlidersFromBone();
+            this.onPoseChange();
             this.recordHistory();
             this.setStatus('Pose reset.');
         }

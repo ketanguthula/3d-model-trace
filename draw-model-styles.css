@@ -36,12 +36,7 @@ main {
 }
 
 #controls {
-    position: sticky;
-    top: 1rem;
     width: 100%;
-    max-height: calc(100vh - 2rem);
-    overflow-y: auto;
-    scrollbar-gutter: stable;
 }
 
 #controls > h2,
@@ -95,6 +90,9 @@ main {
 }
 
 #modelView {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
     min-width: 0;
     width: 100%;
 }
@@ -244,6 +242,23 @@ button:disabled {
     line-height: 1.4;
 }
 
+.pose-subheading {
+    margin-top: 0.1rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.pose-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+}
+
+.pose-preset-grid button {
+    padding: 0.45rem 0.3rem;
+    font-size: 0.78rem;
+}
+
 .pose-actions {
     display: flex;
     gap: 0.5rem;
@@ -276,11 +291,10 @@ button:disabled {
 
     #controls {
         position: static;
-        max-height: none;
-        overflow: visible;
     }
 
     #modelView {
+        position: static;
         grid-row: 1;
     }
 
