@@ -4,7 +4,8 @@ import {
     CAMERA_PRESETS,
     CAMERA_TARGET,
     INITIAL_CAMERA_POSITION,
-    MALE_MODEL_URL
+    MALE_MODEL_URL,
+    ORTHOGRAPHIC_VIEW_HEIGHT
 } from './config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,9 +16,20 @@ document.addEventListener('DOMContentLoaded', () => {
     scene.background = new THREE.Color(0xeeeeee);
 
     // Set up the camera
-    const camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
+    const initialAspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+    const perspectiveCamera = new THREE.PerspectiveCamera(75, initialAspect, 0.1, 1000);
+    const orthographicCamera = new THREE.OrthographicCamera(
+        -(ORTHOGRAPHIC_VIEW_HEIGHT * initialAspect) / 2,
+        (ORTHOGRAPHIC_VIEW_HEIGHT * initialAspect) / 2,
+        ORTHOGRAPHIC_VIEW_HEIGHT / 2,
+        -ORTHOGRAPHIC_VIEW_HEIGHT / 2,
+        0.1,
+        1000
+    );
+    let camera = perspectiveCamera;
     const initialCameraPosition = INITIAL_CAMERA_POSITION;
-    camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
+    perspectiveCamera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
+    orthographicCamera.position.copy(perspectiveCamera.position);
 
     // Set up the renderer
     const renderer = new THREE.WebGLRenderer();
@@ -34,14 +46,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         renderer.setSize(width, height, false);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
+        const aspect = width / height;
+        perspectiveCamera.aspect = aspect;
+        perspectiveCamera.updateProjectionMatrix();
+        orthographicCamera.left = -(ORTHOGRAPHIC_VIEW_HEIGHT * aspect) / 2;
+        orthographicCamera.right = (ORTHOGRAPHIC_VIEW_HEIGHT * aspect) / 2;
+        orthographicCamera.top = ORTHOGRAPHIC_VIEW_HEIGHT / 2;
+        orthographicCamera.bottom = -ORTHOGRAPHIC_VIEW_HEIGHT / 2;
+        orthographicCamera.updateProjectionMatrix();
     }
 
     const canvasResizeObserver = new ResizeObserver(resizeRendererToContainer);
     canvasResizeObserver.observe(canvasContainer);
 
     let rainParticles;
+    let poseController;
 
     // Add ambient and directional lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -140,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             skeletonHelper = new THREE.SkeletonHelper(loadedModel);
             scene.add(skeletonHelper);
 
-            new PoseController({
+            poseController = new PoseController({
                 scene,
                 camera,
                 renderer,
@@ -228,6 +247,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const cameraPresetGrid = document.createElement('div');
     cameraPresetGrid.className = 'camera-preset-grid';
     canvasControls.appendChild(cameraPresetGrid);
+
+    const projectionCheckbox = document.createElement('input');
+    projectionCheckbox.type = 'checkbox';
+    const projectionLabel = document.createElement('label');
+    projectionLabel.textContent = 'Orthographic View';
+    appendCheckboxControl(canvasControls, projectionCheckbox, projectionLabel);
+
+    function switchCamera(useOrthographic) {
+        const previousCamera = camera;
+        const nextCamera = useOrthographic ? orthographicCamera : perspectiveCamera;
+        const viewDirection = previousCamera.position.clone().sub(controls.target).normalize();
+
+        nextCamera.position.copy(previousCamera.position);
+        nextCamera.quaternion.copy(previousCamera.quaternion);
+        nextCamera.up.copy(previousCamera.up);
+
+        if (useOrthographic) {
+            const distance = previousCamera.position.distanceTo(controls.target);
+            const visibleHeight = 2 * distance
+                * Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov / 2));
+            orthographicCamera.zoom = ORTHOGRAPHIC_VIEW_HEIGHT / visibleHeight;
+        } else {
+            const visibleHeight = ORTHOGRAPHIC_VIEW_HEIGHT / orthographicCamera.zoom;
+            const distance = visibleHeight
+                / (2 * Math.tan(THREE.MathUtils.degToRad(perspectiveCamera.fov / 2)));
+            nextCamera.position.copy(controls.target).addScaledVector(viewDirection, distance);
+        }
+
+        nextCamera.updateProjectionMatrix();
+        camera = nextCamera;
+        controls.object = camera;
+        controls.update();
+        if (poseController) {
+            poseController.setCamera(camera);
+        }
+    }
+
+    projectionCheckbox.addEventListener('change', () => {
+        switchCamera(projectionCheckbox.checked);
+    });
 
     function moveCameraTo(position, target = CAMERA_TARGET) {
         gsap.killTweensOf(camera.position);

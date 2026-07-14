@@ -2,6 +2,7 @@ export const MALE_MODEL_URL = './assets/models/ubc/male/male.gltf';
 
 export const INITIAL_CAMERA_POSITION = { x: 0, y: 1, z: 3.2 };
 export const CAMERA_TARGET = { x: 0, y: 0.9, z: 0 };
+export const ORTHOGRAPHIC_VIEW_HEIGHT = 5;
 
 export const CAMERA_PRESETS = [
     { label: 'Front', position: { x: 0, y: 1, z: 3.2 } },

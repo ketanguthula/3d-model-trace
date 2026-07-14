@@ -287,6 +287,11 @@ import { POSE_PRESETS } from './pose-presets.js';
             this.scene.add(this.transformControls);
         }
 
+        setCamera(camera) {
+            this.camera = camera;
+            this.transformControls.camera = camera;
+        }
+
         createJointMarker() {
             const geometry = new THREE.SphereGeometry(0.025, 16, 12);
             const material = new THREE.MeshBasicMaterial({
