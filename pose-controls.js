@@ -63,6 +63,9 @@
             this.deltaEuler = new THREE.Euler(0, 0, 0, 'XYZ');
             this.deltaQuaternion = new THREE.Quaternion();
             this.inverseBindQuaternion = new THREE.Quaternion();
+            this.poseHistory = [];
+            this.historyIndex = -1;
+            this.isRestoringPose = false;
 
             this.collectBones();
             this.createPanel();
@@ -73,6 +76,7 @@
             if (this.boneSelect.options.length > 0) {
                 this.selectBone(this.boneSelect.value);
             }
+            this.recordHistory();
         }
 
         collectBones() {
@@ -125,6 +129,7 @@
                 slider.step = 1;
                 slider.value = 0;
                 slider.addEventListener('input', () => this.applySliderRotation());
+                slider.addEventListener('change', () => this.recordHistory());
 
                 const value = document.createElement('output');
                 value.textContent = '0°';
@@ -141,8 +146,24 @@
             hint.textContent = 'Click a joint on the skeleton or choose one here, then use the colored rotation rings or sliders. Zoom in before selecting finger joints.';
             this.panel.appendChild(hint);
 
-            const buttonRow = document.createElement('div');
-            buttonRow.className = 'pose-actions';
+            const historyActions = document.createElement('div');
+            historyActions.className = 'pose-actions';
+
+            this.undoButton = document.createElement('button');
+            this.undoButton.type = 'button';
+            this.undoButton.textContent = 'Undo';
+            this.undoButton.addEventListener('click', () => this.undo());
+
+            this.redoButton = document.createElement('button');
+            this.redoButton.type = 'button';
+            this.redoButton.textContent = 'Redo';
+            this.redoButton.addEventListener('click', () => this.redo());
+
+            historyActions.append(this.undoButton, this.redoButton);
+            this.panel.appendChild(historyActions);
+
+            const resetActions = document.createElement('div');
+            resetActions.className = 'pose-actions';
 
             const resetJointButton = document.createElement('button');
             resetJointButton.type = 'button';
@@ -154,8 +175,57 @@
             resetPoseButton.textContent = 'Reset Pose';
             resetPoseButton.addEventListener('click', () => this.resetPose());
 
-            buttonRow.append(resetJointButton, resetPoseButton);
-            this.panel.appendChild(buttonRow);
+            resetActions.append(resetJointButton, resetPoseButton);
+            this.panel.appendChild(resetActions);
+
+            const mirrorActions = document.createElement('div');
+            mirrorActions.className = 'pose-actions pose-actions--stacked';
+
+            const mirrorLeftButton = document.createElement('button');
+            mirrorLeftButton.type = 'button';
+            mirrorLeftButton.textContent = 'Mirror Left → Right';
+            mirrorLeftButton.addEventListener('click', () => this.mirrorPose('l', 'r'));
+
+            const mirrorRightButton = document.createElement('button');
+            mirrorRightButton.type = 'button';
+            mirrorRightButton.textContent = 'Mirror Right → Left';
+            mirrorRightButton.addEventListener('click', () => this.mirrorPose('r', 'l'));
+
+            mirrorActions.append(mirrorLeftButton, mirrorRightButton);
+            this.panel.appendChild(mirrorActions);
+
+            const fileActions = document.createElement('div');
+            fileActions.className = 'pose-actions';
+
+            const savePoseButton = document.createElement('button');
+            savePoseButton.type = 'button';
+            savePoseButton.textContent = 'Save Pose';
+            savePoseButton.addEventListener('click', () => this.savePose());
+
+            const loadPoseButton = document.createElement('button');
+            loadPoseButton.type = 'button';
+            loadPoseButton.textContent = 'Load Pose';
+            loadPoseButton.addEventListener('click', () => this.poseFileInput.click());
+
+            this.poseFileInput = document.createElement('input');
+            this.poseFileInput.type = 'file';
+            this.poseFileInput.accept = 'application/json,.json';
+            this.poseFileInput.hidden = true;
+            this.poseFileInput.addEventListener('change', () => {
+                const [file] = this.poseFileInput.files;
+                if (file) {
+                    this.loadPose(file);
+                }
+                this.poseFileInput.value = '';
+            });
+
+            fileActions.append(savePoseButton, loadPoseButton);
+            this.panel.append(fileActions, this.poseFileInput);
+
+            this.poseStatus = document.createElement('p');
+            this.poseStatus.className = 'pose-status';
+            this.poseStatus.setAttribute('aria-live', 'polite');
+            this.panel.appendChild(this.poseStatus);
             this.container.appendChild(this.panel);
         }
 
@@ -186,6 +256,8 @@
                 this.orbitControls.enabled = !event.value;
                 if (event.value) {
                     this.didDragGizmo = true;
+                } else if (this.didDragGizmo) {
+                    this.recordHistory();
                 }
             });
             this.transformControls.addEventListener('objectChange', () => {
@@ -335,6 +407,170 @@
             });
         }
 
+        capturePose() {
+            const pose = {};
+            this.bones.forEach((bone, name) => {
+                pose[name] = bone.quaternion.toArray();
+            });
+            return pose;
+        }
+
+        applyPose(pose) {
+            this.isRestoringPose = true;
+            Object.entries(pose).forEach(([name, values]) => {
+                const bone = this.bones.get(name);
+                if (!bone || !Array.isArray(values) || values.length !== 4) {
+                    return;
+                }
+
+                const quaternionValues = values.map(Number);
+                if (!quaternionValues.every(Number.isFinite)) {
+                    return;
+                }
+
+                bone.quaternion.fromArray(quaternionValues).normalize();
+            });
+            this.isRestoringPose = false;
+            this.syncSlidersFromBone();
+        }
+
+        recordHistory() {
+            if (this.isRestoringPose) {
+                return;
+            }
+
+            const snapshot = this.capturePose();
+            const signature = JSON.stringify(snapshot);
+            const currentEntry = this.poseHistory[this.historyIndex];
+            if (currentEntry && currentEntry.signature === signature) {
+                this.updateHistoryButtons();
+                return;
+            }
+
+            this.poseHistory = this.poseHistory.slice(0, this.historyIndex + 1);
+            this.poseHistory.push({ snapshot, signature });
+            if (this.poseHistory.length > 100) {
+                this.poseHistory.shift();
+            }
+            this.historyIndex = this.poseHistory.length - 1;
+            this.updateHistoryButtons();
+        }
+
+        updateHistoryButtons() {
+            this.undoButton.disabled = this.historyIndex <= 0;
+            this.redoButton.disabled = this.historyIndex >= this.poseHistory.length - 1;
+        }
+
+        undo() {
+            if (this.historyIndex <= 0) {
+                return;
+            }
+
+            this.historyIndex -= 1;
+            this.applyPose(this.poseHistory[this.historyIndex].snapshot);
+            this.updateHistoryButtons();
+            this.setStatus('Undid pose change.');
+        }
+
+        redo() {
+            if (this.historyIndex >= this.poseHistory.length - 1) {
+                return;
+            }
+
+            this.historyIndex += 1;
+            this.applyPose(this.poseHistory[this.historyIndex].snapshot);
+            this.updateHistoryButtons();
+            this.setStatus('Redid pose change.');
+        }
+
+        savePose() {
+            const poseDocument = {
+                format: '3d-model-trace-pose',
+                version: 1,
+                model: 'quaternius-ubc-male',
+                savedAt: new Date().toISOString(),
+                bones: this.capturePose()
+            };
+            const blob = new Blob([JSON.stringify(poseDocument, null, 2)], {
+                type: 'application/json'
+            });
+            const url = URL.createObjectURL(blob);
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = `ubc-male-pose-${new Date().toISOString().slice(0, 10)}.json`;
+            downloadLink.click();
+            URL.revokeObjectURL(url);
+            this.setStatus('Pose saved as JSON.');
+        }
+
+        loadPose(file) {
+            const reader = new FileReader();
+            reader.addEventListener('load', () => {
+                try {
+                    const poseDocument = JSON.parse(reader.result);
+                    if (
+                        poseDocument.format !== '3d-model-trace-pose'
+                        || poseDocument.version !== 1
+                        || !poseDocument.bones
+                        || typeof poseDocument.bones !== 'object'
+                    ) {
+                        throw new Error('Unsupported pose format');
+                    }
+
+                    this.applyPose(poseDocument.bones);
+                    this.recordHistory();
+                    this.setStatus(`Loaded ${file.name}.`);
+                } catch (error) {
+                    console.error('Could not load pose:', error);
+                    this.setStatus('That file is not a valid pose.', true);
+                }
+            });
+            reader.addEventListener('error', () => {
+                this.setStatus('The pose file could not be read.', true);
+            });
+            reader.readAsText(file);
+        }
+
+        mirrorPose(sourceSide, targetSide) {
+            const sourceSuffix = `_${sourceSide}`;
+            const targetSuffix = `_${targetSide}`;
+            const sourceDelta = new THREE.Quaternion();
+            const mirroredDelta = new THREE.Quaternion();
+            const inverseSourceBind = new THREE.Quaternion();
+
+            this.bones.forEach((sourceBone, sourceName) => {
+                if (!sourceName.endsWith(sourceSuffix)) {
+                    return;
+                }
+
+                const targetName = `${sourceName.slice(0, -2)}${targetSuffix}`;
+                const targetBone = this.bones.get(targetName);
+                if (!targetBone) {
+                    return;
+                }
+
+                inverseSourceBind.copy(this.bindQuaternions.get(sourceName)).invert();
+                sourceDelta.copy(inverseSourceBind).multiply(sourceBone.quaternion);
+                mirroredDelta
+                    .set(sourceDelta.x, -sourceDelta.y, -sourceDelta.z, sourceDelta.w)
+                    .normalize();
+                targetBone.quaternion
+                    .copy(this.bindQuaternions.get(targetName))
+                    .multiply(mirroredDelta);
+            });
+
+            this.syncSlidersFromBone();
+            this.recordHistory();
+            const sourceLabel = sourceSide === 'l' ? 'left' : 'right';
+            const targetLabel = targetSide === 'l' ? 'left' : 'right';
+            this.setStatus(`Mirrored ${sourceLabel} limbs to the ${targetLabel}.`);
+        }
+
+        setStatus(message, isError = false) {
+            this.poseStatus.textContent = message;
+            this.poseStatus.classList.toggle('pose-status--error', isError);
+        }
+
         resetSelectedBone() {
             if (!this.selectedBone) {
                 return;
@@ -342,6 +578,8 @@
 
             this.selectedBone.quaternion.copy(this.bindQuaternions.get(this.selectedBone.name));
             this.syncSlidersFromBone();
+            this.recordHistory();
+            this.setStatus('Joint reset.');
         }
 
         resetPose() {
@@ -349,6 +587,8 @@
                 bone.quaternion.copy(this.bindQuaternions.get(name));
             });
             this.syncSlidersFromBone();
+            this.recordHistory();
+            this.setStatus('Pose reset.');
         }
     }
 

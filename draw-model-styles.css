@@ -142,6 +142,23 @@ button:hover {
     background-color: #45a049;
 }
 
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.camera-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+    margin-bottom: 0.35rem;
+}
+
+.camera-preset-grid button {
+    padding: 0.4rem 0.25rem;
+    font-size: 0.8rem;
+}
+
 #canvasContainer {
     position: relative;
     width: 100%;
@@ -230,6 +247,26 @@ button:hover {
 .pose-actions {
     display: flex;
     gap: 0.5rem;
+}
+
+.pose-actions button {
+    flex: 1;
+    font-size: 0.82rem;
+}
+
+.pose-actions--stacked {
+    flex-direction: column;
+}
+
+.pose-status {
+    min-height: 1rem;
+    margin: 0;
+    color: #39733c;
+    font-size: 0.78rem;
+}
+
+.pose-status--error {
+    color: #a12622;
 }
 
 @media (max-width: 650px) {

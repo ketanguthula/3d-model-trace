@@ -207,6 +207,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvasControls = createControlSection('Canvas');
     const modelControls = createControlSection('Model');
 
+    const cameraPresetLabel = document.createElement('label');
+    cameraPresetLabel.textContent = 'Camera Views';
+    canvasControls.appendChild(cameraPresetLabel);
+
+    const cameraPresetGrid = document.createElement('div');
+    cameraPresetGrid.className = 'camera-preset-grid';
+    canvasControls.appendChild(cameraPresetGrid);
+
+    const cameraTarget = { x: 0, y: 0.9, z: 0 };
+    const cameraPresets = [
+        { label: 'Front', position: { x: 0, y: 1, z: 3.2 } },
+        { label: 'Back', position: { x: 0, y: 1, z: -3.2 } },
+        { label: 'Left', position: { x: -3.2, y: 1, z: 0 } },
+        { label: 'Right', position: { x: 3.2, y: 1, z: 0 } },
+        { label: '3/4', position: { x: 2.35, y: 1.25, z: 2.35 } },
+        { label: 'Top', position: { x: 0, y: 4, z: 0.01 } }
+    ];
+
+    function moveCameraTo(position, target = cameraTarget) {
+        gsap.killTweensOf(camera.position);
+        gsap.killTweensOf(controls.target);
+        gsap.to(camera.position, {
+            ...position,
+            duration: 0.8,
+            ease: 'power2.inOut',
+            onUpdate: () => controls.update()
+        });
+        gsap.to(controls.target, {
+            ...target,
+            duration: 0.8,
+            ease: 'power2.inOut',
+            onUpdate: () => controls.update()
+        });
+    }
+
+    cameraPresets.forEach((preset) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = preset.label;
+        button.addEventListener('click', () => moveCameraTo(preset.position));
+        cameraPresetGrid.appendChild(button);
+    });
+
     // Height slider for dynamic model scaling
     const heightSliderLabel = document.createElement('label');
     heightSliderLabel.textContent = 'Height (cm):';
@@ -431,20 +474,6 @@ document.addEventListener('DOMContentLoaded', () => {
     homeButton.style.backgroundColor = '#4CAF50';
     canvasContainer.appendChild(homeButton);
     homeButton.addEventListener('click', () => {
-        gsap.to(camera.position, {
-            x: initialCameraPosition.x,
-            y: initialCameraPosition.y,
-            z: initialCameraPosition.z,
-            duration: 1.5, // Duration of the animation in seconds
-            onUpdate: () => controls.update() // Update controls as camera moves
-        });
-
-        gsap.to(controls.target, {
-            x: 0,
-            y: 0.9,
-            z: 0,
-            duration: 1.5,
-            onUpdate: () => controls.update() // Keep controls target updated
-        });
+        moveCameraTo(initialCameraPosition);
     });
 });
