@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Silhouette Tool</title>
+    <link rel="stylesheet" href="draw-model-styles.css?v=20260714-1">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.3/gsap.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>3D Model Silhouette Tool</h1>
+    </header>
+    <main>
+        <section id="controls">
+            <h2>Controls</h2>
+            <div id="controlsContainer"></div>
+        </section>
+        <section id="modelView">
+            <h2>3D Model View</h2>
+            <div id="canvasContainer"></div>
+        </section>
+    </main>
+    <!-- Include the main JavaScript file -->
+    <script src="pose-controls.js?v=20260714-1"></script>
+    <script src="draw-model.js?v=20260714-1"></script>
+</body>
+</html>
