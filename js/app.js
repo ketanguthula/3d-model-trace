@@ -1,4 +1,11 @@
-const MALE_MODEL_URL = './assets/models/ubc/male/male.gltf';
+import { PoseController } from './pose/pose-controller.js';
+import { appendCheckboxControl, createControlSection } from './ui/control-elements.js';
+import {
+    CAMERA_PRESETS,
+    CAMERA_TARGET,
+    INITIAL_CAMERA_POSITION,
+    MALE_MODEL_URL
+} from './config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvasContainer = document.getElementById('canvasContainer');
@@ -9,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Set up the camera
     const camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 0.1, 1000);
-    const initialCameraPosition = { x: 0, y: 1, z: 3.2 };
+    const initialCameraPosition = INITIAL_CAMERA_POSITION;
     camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
 
     // Set up the renderer
@@ -211,25 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Organize controls by what they affect.
     const controlsContainer = document.getElementById('controlsContainer');
 
-    function createControlSection(title) {
-        const section = document.createElement('section');
-        section.className = 'control-section';
-        const heading = document.createElement('h3');
-        heading.textContent = title;
-        section.appendChild(heading);
-        controlsContainer.appendChild(section);
-        return section;
-    }
-
-    function appendCheckboxControl(container, checkbox, label) {
-        const row = document.createElement('div');
-        row.className = 'checkbox-control';
-        row.append(checkbox, label);
-        container.appendChild(row);
-    }
-
-    const canvasControls = createControlSection('Canvas');
-    const modelControls = createControlSection('Model');
+    const canvasControls = createControlSection(controlsContainer, 'Canvas');
+    const modelControls = createControlSection(controlsContainer, 'Model');
 
     const cameraPresetLabel = document.createElement('label');
     cameraPresetLabel.textContent = 'Camera Views';
@@ -239,17 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraPresetGrid.className = 'camera-preset-grid';
     canvasControls.appendChild(cameraPresetGrid);
 
-    const cameraTarget = { x: 0, y: 0.9, z: 0 };
-    const cameraPresets = [
-        { label: 'Front', position: { x: 0, y: 1, z: 3.2 } },
-        { label: 'Back', position: { x: 0, y: 1, z: -3.2 } },
-        { label: 'Left', position: { x: -3.2, y: 1, z: 0 } },
-        { label: 'Right', position: { x: 3.2, y: 1, z: 0 } },
-        { label: '3/4', position: { x: 2.35, y: 1.25, z: 2.35 } },
-        { label: 'Top', position: { x: 0, y: 4, z: 0.01 } }
-    ];
-
-    function moveCameraTo(position, target = cameraTarget) {
+    function moveCameraTo(position, target = CAMERA_TARGET) {
         gsap.killTweensOf(camera.position);
         gsap.killTweensOf(controls.target);
         gsap.to(camera.position, {
@@ -266,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    cameraPresets.forEach((preset) => {
+    CAMERA_PRESETS.forEach((preset) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = preset.label;
