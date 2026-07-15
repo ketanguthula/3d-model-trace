@@ -1,4 +1,5 @@
-import { PoseController } from './pose/pose-controller.js';
+import { PoseController } from './pose/pose-controller.js?v=20260715-5';
+import { CanvasExporter } from './ui/canvas-exporter.js?v=20260715-5';
 import { appendCheckboxControl, createControlSection } from './ui/control-elements.js';
 import {
     CAMERA_PRESETS,
@@ -32,7 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
     orthographicCamera.position.copy(perspectiveCamera.position);
 
     // Set up the renderer
-    const renderer = new THREE.WebGLRenderer();
+    const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        preserveDrawingBuffer: true
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -286,6 +290,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     projectionCheckbox.addEventListener('change', () => {
         switchCamera(projectionCheckbox.checked);
+    });
+
+    new CanvasExporter({
+        container: canvasControls,
+        scene,
+        renderer,
+        getCamera: () => camera,
+        getHiddenObjects: () => [
+            skeletonHelper,
+            ...(poseController?.getEditingHelpers() || [])
+        ].filter(Boolean)
     });
 
     function moveCameraTo(position, target = CAMERA_TARGET) {
